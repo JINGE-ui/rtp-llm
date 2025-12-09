@@ -100,12 +100,13 @@ class BaseModel(object):
         return False
 
     def _load(self, device: str):
-        # set empty weights for attention service
         self.weight: ModelWeights = self.model_weights_loader.load_weights(
             device=self.device
         )
         self._load_custom_module()
         self._load_multimodal()
+        # AFD: remove weights for atten/ffn rank
+        self.weight.afd_remove_weights(self.config)
         self.model_weights_loader.force_clean_cuda_memory()
 
     @classmethod

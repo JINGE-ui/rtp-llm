@@ -180,10 +180,10 @@ class Qwen3GemmModel(DisaggregateModelBase):
             )
         ]
 
-        self.norm = RMSNorm(
-            weights.get_global_weight(W.final_ln_gamma), eps=config.layernorm_eps
-        )
-        self.lm_head = Linear(weights.get_global_weight(W.lm_head))
+        # self.norm = RMSNorm(
+        #     weights.get_global_weight(W.final_ln_gamma), eps=config.layernorm_eps
+        # )
+        # self.lm_head = Linear(weights.get_global_weight(W.lm_head))
 
     def recv_micro_batch_split_info(self) -> Tuple[List[torch.Tensor], BatchSplitInfo]:
         dp_num = len(self.attn_dp_rank)
@@ -277,10 +277,7 @@ class Qwen3AttnModel(DisaggregateModelBase):
     def __init__(self, config: GptInitModelParameters, weights: ModelWeights):
         super().__init__(config, weights)
         self.attention_layers = nn.ModuleList(
-            [
-                CausalAttentionPure(config, weights.weights[idx])
-                for idx in range(self.layer_num)
-            ]
+            [CausalAttentionPure(config, {}) for idx in range(self.layer_num)]
         )
         self.ffn_service_rank = (
             config.gpt_init_params.ffn_disaggregate_config.attention_dp_size
@@ -370,10 +367,10 @@ class Qwen3DisaggregateModel(GptModelBase):
         else:
             self.model = Qwen3AttnModel(config, weights)
 
-        self.norm = RMSNorm(
-            weights.get_global_weight(W.final_ln_gamma), eps=config.layernorm_eps
-        )
-        self.lm_head = Linear(weights.get_global_weight(W.lm_head))
+        # self.norm = RMSNorm(
+        #     weights.get_global_weight(W.final_ln_gamma), eps=config.layernorm_eps
+        # )
+        # self.lm_head = Linear(weights.get_global_weight(W.lm_head))
 
     def initialize(self, init_resource: PyModelInitResources) -> bool:
         super().initialize(init_resource)
