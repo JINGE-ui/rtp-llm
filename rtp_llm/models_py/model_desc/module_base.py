@@ -31,9 +31,12 @@ class GptModelBase(nn.Module):
         self.kv_cache: Optional[KVCache] = None
         self.device_type: DeviceType = get_device().get_device_type()
 
-        self.micro_batch_size: int = (
-            1 if config.device_resource_config.enable_layer_micro_batch == 0 else 2
-        )
+        # self.micro_batch_size: int = (
+        #     1 if config.device_resource_config.enable_layer_micro_batch == 0 else 2
+        # )
+        self.micro_batch_size: int = config.device_resource_config.micro_batch_num
+        print(f"micro_batch_size = {self.micro_batch_size}", flush=True)
+
         ## (batch_size -> fmha_params)
         self.params_dict: dict[int, Any] = {}
 

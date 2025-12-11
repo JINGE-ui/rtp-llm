@@ -13,7 +13,13 @@ from rtp_llm.model_loader.model_weight_info import ModelWeights
 from rtp_llm.models_py.model_desc.module_base import GptModelBase
 from rtp_llm.models_py.modules import SelectTopk
 from rtp_llm.models_py.modules.attention import CausalAttention
-from rtp_llm.models_py.modules.cuda.moe.routers.afd_data_router import AfdDataRouterAttn
+from rtp_llm.models_py.modules.common.moe.executor.batched_triton_executor import (
+    BatchedTritonExperts,
+)
+from rtp_llm.models_py.modules.cuda.moe.routers.afd_data_router import (
+    AfdDataRouterAttn,
+    AfdDataRouterFfn,
+)
 from rtp_llm.models_py.modules.embedding import Embedding
 from rtp_llm.models_py.modules.factory.fused_moe import FusedMoeFactory
 from rtp_llm.models_py.modules.fmha import FMHAImplBase
@@ -37,6 +43,7 @@ class Qwen3MoeAfdMlpLayer(nn.Module):
         weights: Dict[str, torch.Tensor],
         rank: int,
         world_size: int,
+        data_router: AfdDataRouterFfn,
     ):
         afd_config = config.gpt_init_params.ffn_disaggregate_config
         super().__init__()
@@ -54,14 +61,26 @@ class Qwen3MoeAfdMlpLayer(nn.Module):
         ) // config.tp_size
 
         assert self.is_ffn_rank
-        self.w1 = weights.get(W.moe_w1, None)
-        self.w2 = weights.get(W.moe_w2, None)
+        # self.w1 = weights.get(W.moe_w1, None)
+        # self.w2 = weights.get(W.moe_w2, None)
 
-        assert (
-            self.w1 is not None and self.w2 is not None
-        ), "Weights w1 and w2 must be provided"
+        # assert (
+        #     self.w1 is not None and self.w2 is not None
+        # ), "Weights w1 and w2 must be provided"
 
-        self.fused_moe = FusedMoeFactory().create_fused_moe(config, weights)
+        num_max_dispatch_tokens_per_rank = (
+            config.max_generate_batch_size + config.tp_size - 1
+        ) // config.tp_size
+        executor = BatchedTritonExperts(
+            max_num_tokens=num_max_dispatch_tokens_per_rank * config.world_size,
+            num_dispatchers=1,
+            w1=weights[W.moe_w1],
+            w2=weights[W.moe_w2],
+        )
+
+        from rtp_llm.models_py.modules.common.moe.fused_moe import FusedMoe
+
+        self.fused_moe = FusedMoe(data_router, executor, expert_num=config.expert_num)
 
     def forward(
         self,
@@ -207,6 +226,7 @@ class Qwen3MoeAttnModel(GptModelBase):
     def forward_micro_batch(
         self, mirco_batch_inputs: List[PyModelInputs]
     ) -> List[PyModelOutputs]:
+        # print("Qwen3MoeAttnModel forward_micro_batch", flush=True)
         hidden_states_list: List[torch.Tensor] = []
         next_hidden_states_list: List[torch.Tensor] = []
         fmha_impl_list: List[FMHAImplBase] = []
@@ -254,19 +274,39 @@ class Qwen3MoeFfnModel(GptModelBase):
     ):
         super().__init__(config, weights)
 
+        self.data_router = AfdDataRouterFfn(
+            config,
+            use_fp8_dispatch=False,
+            zero_copy=False,
+            async_finish=True,
+            return_recv_hook=False,
+        )
+
         self.layers = nn.ModuleList(
             [
-                Qwen3MoeAfdMlpLayer(config, weights.weights[idx], rank, world_size)
+                Qwen3MoeAfdMlpLayer(
+                    config, weights.weights[idx], rank, world_size, self.data_router
+                )
                 for idx in range(self.layer_num)
             ]
         )
 
         self.hidden_dim = config.hidden_size
         self.topk = config.moe_k
+        self.count = 0
+        self.max_count = 10
 
     def forward_micro_batch(
         self, mirco_batch_inputs: List[PyModelInputs]
     ) -> List[PyModelOutputs]:
+        # if self.count >= self.max_count:
+        #     return []
+        # self.count += 1
+
+        # import time
+        # time.sleep(0.1)  # TODO 用于解决FFN开启ACCL_COMMUNICATE_WAIT_COMPUTE=0时,的非法内存访问bug
+
+        # print(f"Qwen3MoeFfnModel forward_micro_batch layer num: {self.layer_num}, count: {self.count}", flush=True)
         for i, layer in enumerate(self.layers):
             for idx in range(self.micro_batch_size):
                 hidden_states = torch.empty(0, self.hidden_dim)

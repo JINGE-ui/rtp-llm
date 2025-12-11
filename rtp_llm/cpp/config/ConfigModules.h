@@ -117,6 +117,7 @@ struct DeviceResourceConfig {
     int         m_split                     = 0;
     bool        enable_comm_overlap         = true;
     int         enable_layer_micro_batch    = 0;
+    int         micro_batch_num             = 2;
     bool        not_use_default_stream      = false;
     std::string to_string() const;
     void        update_from_env_for_test();

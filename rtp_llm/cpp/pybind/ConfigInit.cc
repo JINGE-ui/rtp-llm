@@ -288,7 +288,7 @@ void register_hwkernel_config(pybind11::module& m) {
 // DeviceResourceConfig
 void register_device_resource_config(pybind11::module& m) {
     pybind11::class_<DeviceResourceConfig>(m, "DeviceResourceConfig")
-        .def(pybind11::init<int64_t, int64_t, int, int, int, bool, int, bool>(),
+        .def(pybind11::init<int64_t, int64_t, int, int, int, bool, int, int, bool>(),
              pybind11::arg("device_reserve_memory_bytes") = -1073741824,
              pybind11::arg("host_reserve_memory_bytes")   = 4LL * 1024 * 1024 * 1024,
              pybind11::arg("overlap_math_sm_count")       = 0,
@@ -296,6 +296,7 @@ void register_device_resource_config(pybind11::module& m) {
              pybind11::arg("m_split")                     = 0,
              pybind11::arg("enable_comm_overlap")         = true,
              pybind11::arg("enable_layer_micro_batch")    = 0,
+             pybind11::arg("micro_batch_num")             = 2,
              pybind11::arg("not_use_default_stream")      = false)
         .def("to_string", &DeviceResourceConfig::to_string)
         .def("update_from_env", &DeviceResourceConfig::update_from_env_for_test)
@@ -306,6 +307,7 @@ void register_device_resource_config(pybind11::module& m) {
         .def_readwrite("m_split", &DeviceResourceConfig::m_split)
         .def_readwrite("enable_comm_overlap", &DeviceResourceConfig::enable_comm_overlap)
         .def_readwrite("enable_layer_micro_batch", &DeviceResourceConfig::enable_layer_micro_batch)
+        .def_readwrite("micro_batch_num", &DeviceResourceConfig::micro_batch_num)
         .def_readwrite("not_use_default_stream", &DeviceResourceConfig::not_use_default_stream);
 }
 

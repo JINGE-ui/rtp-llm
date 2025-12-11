@@ -222,6 +222,7 @@ void DeviceResourceConfig::update_from_env_for_test() {
     m_split                     = autil::EnvUtil::getEnv("M_SPLIT", 0);
     enable_comm_overlap         = bool_from_env_for_test("ENABLE_COMM_OVERLAP", true);
     enable_layer_micro_batch    = autil::EnvUtil::getEnv("ENABLE_LAYER_MICRO_BATCH", 0);
+    micro_batch_num             = autil::EnvUtil::getEnv("MICRO_BATCH_NUM", 0);
     not_use_default_stream      = bool_from_env_for_test("NOT_USE_DEFAULT_STREAM", false);
 }
 

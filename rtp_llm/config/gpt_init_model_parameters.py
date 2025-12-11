@@ -882,6 +882,7 @@ class GptInitModelParameters:
             m_split=get_env_int("M_SPLIT", 0),
             enable_comm_overlap=get_env_bool("ENABLE_COMM_OVERLAP", True),
             enable_layer_micro_batch=get_env_int("ENABLE_LAYER_MICRO_BATCH", 0),
+            micro_batch_num=get_env_int("MICRO_BATCH_NUM", 2),
             not_use_default_stream=get_env_bool("NOT_USE_DEFAULT_STREAM", False),
         )
 

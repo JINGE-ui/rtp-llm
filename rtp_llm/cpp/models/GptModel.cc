@@ -11,6 +11,7 @@
 #include "rtp_llm/cpp/utils/StringUtil.h"
 #include "rtp_llm/cpp/devices/utils/DevicePerfWrapper.h"
 #include "rtp_llm/cpp/config/ConfigModules.h"
+#include "autil/EnvUtil.h"
 #include <algorithm>
 #include <memory>
 
@@ -275,6 +276,9 @@ MicroBatchPlan GptModel::planMicroBatches(const GptModelInputs& inputs) {
     const auto  decoder_batch_size = sequence_lengths->shape()[0];
     const auto  context_batch_size = input_lengths->shape()[0] - decoder_batch_size;
 
+    const auto micro_batch_num = autil::EnvUtil::getEnv("MICRO_BATCH_NUM", 2);
+    RTP_LLM_LOG_INFO("micro batch num: %d", micro_batch_num);
+
     if (decoder_batch_size + context_batch_size < 2) {
         RTP_LLM_LOG_DEBUG("micro batch disable when batch size %ld is less than 2",
                           decoder_batch_size + context_batch_size);
@@ -285,6 +289,7 @@ MicroBatchPlan GptModel::planMicroBatches(const GptModelInputs& inputs) {
 
     // disable micro batching if both context and decoder query exists.
     if (context_batch_size && decoder_batch_size) {
+        // TOOD split context and decode into micro_batch_num parts
         if (layer_num_ == 1) {
             size_t total_token_num = decoder_batch_size;
             for (size_t i = 0; i < context_batch_size; i++) {
@@ -330,13 +335,31 @@ MicroBatchPlan GptModel::planMicroBatches(const GptModelInputs& inputs) {
         }
     }
 
+    // 纯context或纯decode场景：均匀分割成N个micro batch
     const auto batch_size_to_split = context_batch_size ? context_batch_size : decoder_batch_size;
-    const auto micro_batch_0_size  = (batch_size_to_split + 1) / 2;
-    const auto micro_batch_1_size  = batch_size_to_split - micro_batch_0_size;
 
-    RTP_LLM_LOG_DEBUG("split micro batch size %ld, %ld", micro_batch_0_size, micro_batch_1_size);
-    return context_batch_size ? MicroBatchPlan{true, {{micro_batch_0_size, 0}, {micro_batch_1_size, 0}}} :
-                                MicroBatchPlan{true, {{0, micro_batch_0_size}, {0, micro_batch_1_size}}};
+    std::vector<MicroBatchInfo> batch_infos;
+    size_t base_batch_size = batch_size_to_split / micro_batch_num;
+    size_t remainder = batch_size_to_split % micro_batch_num;
+    
+    for (int i = 0; i < micro_batch_num; i++) {
+        size_t current_batch_size = base_batch_size + (i < static_cast<int>(remainder) ? 1 : 0);
+        if (context_batch_size) {
+            batch_infos.push_back({current_batch_size, 0});
+        } else {
+            batch_infos.push_back({0, current_batch_size});
+        }
+        RTP_LLM_LOG_INFO("micro batch %d size: %zu", i, current_batch_size);
+    }
+
+    return MicroBatchPlan{true, batch_infos};
+
+    // const auto micro_batch_0_size  = (batch_size_to_split + 1) / 2;
+    // const auto micro_batch_1_size  = batch_size_to_split - micro_batch_0_size;
+
+    // RTP_LLM_LOG_DEBUG("split micro batch size %ld, %ld", micro_batch_0_size, micro_batch_1_size);
+    // return context_batch_size ? MicroBatchPlan{true, {{micro_batch_0_size, 0}, {micro_batch_1_size, 0}}} :
+    //                             MicroBatchPlan{true, {{0, micro_batch_0_size}, {0, micro_batch_1_size}}};
 }
 
 std::pair<vector<GptModelInputs>, vector<TokenSliceInfo>>
@@ -354,6 +377,9 @@ GptModel::splitInputsIntoMicroBatches(const GptModelInputs& inputs, const MicroB
         // we put everything into the first micro batch, and send empty query to the second micro batch
         micro_batch_inputs.push_back(inputs);
 
+        const auto micro_batch_num = autil::EnvUtil::getEnv("MICRO_BATCH_NUM", 2);
+        RTP_LLM_LOG_INFO("micro batch num: %d", micro_batch_num);
+        for (int i = 0; i < micro_batch_num - 1; i++) {
         // The fake query
         GptModelInputs fake_inputs;
         fake_inputs.kv_cache_block_id = nullptr;
@@ -366,6 +392,8 @@ GptModel::splitInputsIntoMicroBatches(const GptModelInputs& inputs, const MicroB
         auto fake_hidden =
             device_->allocateBuffer({description_.data_type, {1, description_.attention_conf.hidden_size}});
         micro_batch_inputs.push_back(fake_inputs);
+        }
+        
     } else {
         // TODO(wangyin.yx): refact this splitting method, extract common code
         for (size_t i = 0; i < micro_batch_plan.batch_infos.size(); ++i) {

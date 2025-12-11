@@ -194,6 +194,22 @@ def auto_configure_deepep(args: argparse.Namespace):
     tp_size = g_parallel_info.tp_size
     ep_size = g_parallel_info.ep_size
     logging.info(f"world_size: {world_size}, tp_size: {tp_size}, ep_size: {ep_size}")
+
+    enable_ffn_disaggregate = StaticConfig.ffn_disaggregate_config.enable_ffn_disaggregate
+
+    if enable_ffn_disaggregate:
+        logging.info("use ffn disaggregate in `auto_configure_deepep`")
+        os.environ["USE_DEEPEP_MOE"] = "0"
+        os.environ["USE_DEEPEP_LOW_LATENCY"] = "1"
+        os.environ["USE_DEEPEP_INTERNODE"] = "0"
+        logging.info(
+            f"ENABLE_FFN_DISAGGREGATE is enabled (enable_ffn_disaggregate={enable_ffn_disaggregate}), "
+            f"USE_DEEPEP_MOE is disabled (use_deepep_moe=0), "
+            f"USE_DEEPEP_LOW_LATENCY is enabled (use_deepep_low_latency=1), "
+            f"USE_DEEPEP_INTERNODE is disabled (use_deepep_internode=0)"
+        )
+        return
+
     # If USE_ALL_GATHER is enabled (for pure TP scenarios), disable all DeepEP settings
     # Calculate use_all_gather: (USE_ALL_GATHER env is True) and (ep_size == tp_size)
     use_all_gather_env = StaticConfig.parallelism_distributed_config.use_all_gather
@@ -342,12 +358,12 @@ def start_server(parser: EnvArgumentParser, args: argparse.Namespace):
 
     # Auto-configure DeepEP settings based on deployment scenario
     # Check from args to see if user has manually configured
-    if should_auto_configure_deepep(args):
-        auto_configure_deepep(args)
-    else:
-        logging.info(
-            "DeepEP configuration already set manually, skipping auto-configuration"
-        )
+    # if should_auto_configure_deepep(args):
+    #     auto_configure_deepep(args)
+    # else:
+    #     logging.info(
+    #         "DeepEP configuration already set manually, skipping auto-configuration"
+    #     )
 
     try:
         if os.environ.get("ROLE_TYPE", "") != "FRONTEND":
